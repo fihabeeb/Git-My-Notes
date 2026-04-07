@@ -3,13 +3,18 @@ import { useAppStore, FileNode } from "../store";
 import { invoke } from "@tauri-apps/api/core";
 import { readDir } from "@tauri-apps/plugin-fs";
 
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/");
+}
+
 async function loadDirectory(path: string): Promise<FileNode[]> {
   try {
-    const entries = await readDir(path);
+    const normalizedPath = normalizePath(path);
+    const entries = await readDir(normalizedPath);
     const nodes: FileNode[] = [];
     
     for (const entry of entries) {
-      const fullPath = `${path}/${entry.name}`;
+      const fullPath = `${normalizedPath}/${entry.name}`;
       if (entry.isDirectory && !entry.name.startsWith(".")) {
         nodes.push({
           name: entry.name,
@@ -45,8 +50,9 @@ function FileTree({ nodes, depth = 0 }: { nodes: FileNode[]; depth?: number }) {
     if (node.isDirectory) {
       setExpanded((prev) => ({ ...prev, [node.path]: !prev[node.path] }));
     } else {
-      setActiveFile(node.path);
-      const response = await invoke<string>("read_file", { path: node.path });
+      const normalizedPath = normalizePath(node.path);
+      setActiveFile(normalizedPath);
+      const response = await invoke<string>("read_file", { path: normalizedPath });
       setEditorContent(response);
     }
   };
@@ -75,9 +81,15 @@ function FileTree({ nodes, depth = 0 }: { nodes: FileNode[]; depth?: number }) {
 }
 
 export default function Sidebar() {
-  const { vaultPath, files, setFiles, setActiveFile, setEditorContent } = useAppStore();
+  const { vaultPath, files, setFiles, setActiveFile, setEditorContent, setVaultPath, setGitHubConfig, setGithubSetupComplete } = useAppStore();
   const [showNewFileInput, setShowNewFileInput] = useState(false);
   const [newFileName, setNewFileName] = useState("");
+
+  const handleGoBack = () => {
+    setVaultPath(null);
+    setGitHubConfig(null);
+    setGithubSetupComplete(false);
+  };
 
   useEffect(() => {
     if (vaultPath) {
@@ -93,7 +105,8 @@ export default function Sidebar() {
       fileName += ".md";
     }
     
-    const filePath = `${vaultPath}/${fileName}`;
+    const normalizedVaultPath = normalizePath(vaultPath);
+    const filePath = `${normalizedVaultPath}/${fileName}`;
     
     try {
       await invoke("create_file", { path: filePath });
@@ -101,7 +114,7 @@ export default function Sidebar() {
       setShowNewFileInput(false);
       setActiveFile(filePath);
       setEditorContent("");
-      const updatedFiles = await loadDirectory(vaultPath);
+      const updatedFiles = await loadDirectory(normalizedVaultPath);
       setFiles(updatedFiles);
     } catch (e) {
       console.error("Failed to create file:", e);
@@ -121,13 +134,22 @@ export default function Sidebar() {
     <div className="h-full obsidian-sidebar flex flex-col">
       <div className="p-3 border-b border-[#30363d] flex justify-between items-center">
         <h2 className="text-sm font-semibold text-[#c9d1d9]">Explorer</h2>
-        <button
-          onClick={() => setShowNewFileInput(true)}
-          className="text-[#6e7681] hover:text-[#c9d1d9] text-lg"
-          title="New File"
-        >
-          +
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleGoBack}
+            className="text-[#6e7681] hover:text-[#c9d1d9] text-xs"
+            title="Back to Welcome"
+          >
+            Back
+          </button>
+          <button
+            onClick={() => setShowNewFileInput(true)}
+            className="text-[#6e7681] hover:text-[#c9d1d9] text-lg"
+            title="New File"
+          >
+            +
+          </button>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto py-2">
         <FileTree nodes={files} />

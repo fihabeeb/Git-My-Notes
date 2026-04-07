@@ -3,8 +3,16 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "../store";
 
 export default function WelcomeScreen() {
-  const { setVaultPath } = useAppStore();
+  const { setVaultPath, setGitHubConfig, setGithubSetupComplete } = useAppStore();
   const [localPath, setLocalPath] = useState("");
+
+  const handleReset = () => {
+    setVaultPath(null);
+    setGitHubConfig(null);
+    setGithubSetupComplete(false);
+    localStorage.removeItem("obsidian-github-storage");
+    window.location.reload();
+  };
 
   const handleSelectFolder = async () => {
     const selected = await open({
@@ -20,7 +28,8 @@ export default function WelcomeScreen() {
 
   const handleCreateVault = () => {
     if (localPath) {
-      setVaultPath(localPath);
+      const normalizedPath = localPath.replace(/\\/g, "/");
+      setVaultPath(normalizedPath);
     }
   };
 
@@ -80,6 +89,15 @@ export default function WelcomeScreen() {
               Set Up GitHub Sync
             </button>
           </div>
+        </div>
+
+        <div className="mt-8 text-center">
+          <button
+            onClick={handleReset}
+            className="text-xs text-[#6e7681] hover:text-red-400 transition-colors"
+          >
+            Reset Settings
+          </button>
         </div>
       </div>
     </div>
