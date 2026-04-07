@@ -8,7 +8,7 @@ import WelcomeScreen from "./components/WelcomeScreen";
 import GitHubSetup from "./components/GitHubSetup";
 
 function App() {
-  const { vaultPath, gitHubConfig, githubSetupComplete } = useAppStore();
+  const { vaultPath, githubSetupComplete } = useAppStore();
 
   if (!vaultPath) {
     return <WelcomeScreen />;

@@ -14,6 +14,12 @@ export interface GitHubConfig {
   repo: string;
 }
 
+export interface RecentFolder {
+  path: string;
+  gitHubConfig?: GitHubConfig;
+  lastOpened: number;
+}
+
 interface AppState {
   vaultPath: string | null;
   files: FileNode[];
@@ -24,7 +30,7 @@ interface AppState {
   isSyncing: boolean;
   syncStatus: string;
   githubSetupComplete: boolean;
-  recentFolders: string[];
+  recentFolders: RecentFolder[];
   
   setVaultPath: (path: string | null) => void;
   setFiles: (files: FileNode[]) => void;
@@ -34,8 +40,9 @@ interface AppState {
   setIsSyncing: (syncing: boolean) => void;
   setSyncStatus: (status: string) => void;
   setGithubSetupComplete: (complete: boolean) => void;
-  setRecentFolders: (folders: string[]) => void;
-  addRecentFolder: (path: string) => void;
+  setRecentFolders: (folders: RecentFolder[]) => void;
+  addRecentFolder: (path: string, gitHubConfig?: GitHubConfig) => void;
+  getRecentFolder: (path: string) => RecentFolder | undefined;
 }
 
 export const useAppStore = create<AppState>()(
@@ -61,11 +68,20 @@ export const useAppStore = create<AppState>()(
       setSyncStatus: (status) => set({ syncStatus: status }),
       setGithubSetupComplete: (complete) => set({ githubSetupComplete: complete }),
       setRecentFolders: (folders) => set({ recentFolders: folders }),
-      addRecentFolder: (path) => {
+      addRecentFolder: (path, gitHubConfig) => {
         const { recentFolders } = get();
-        const filtered = recentFolders.filter(f => f !== path);
-        const updated = [path, ...filtered].slice(0, 10);
+        const filtered = recentFolders.filter(f => f.path !== path);
+        const newFolder: RecentFolder = {
+          path,
+          gitHubConfig,
+          lastOpened: Date.now(),
+        };
+        const updated = [newFolder, ...filtered].slice(0, 10);
         set({ recentFolders: updated });
+      },
+      getRecentFolder: (path) => {
+        const { recentFolders } = get();
+        return recentFolders.find(f => f.path === path);
       },
     }),
     {

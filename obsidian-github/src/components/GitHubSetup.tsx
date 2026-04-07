@@ -3,7 +3,7 @@ import { useAppStore } from "../store";
 import { invoke } from "@tauri-apps/api/core";
 
 export default function GitHubSetup() {
-  const { setGitHubConfig, setVaultPath, setGithubSetupComplete, vaultPath } = useAppStore();
+  const { setGitHubConfig, setVaultPath, setGithubSetupComplete, vaultPath, addRecentFolder } = useAppStore();
   const [token, setToken] = useState("");
   const [owner, setOwner] = useState("");
   const [repo, setRepo] = useState("");
@@ -33,8 +33,10 @@ export default function GitHubSetup() {
       });
 
       if (result.success) {
-        setGitHubConfig({ token, owner, repo });
+        const config = { token, owner, repo };
+        setGitHubConfig(config);
         setGithubSetupComplete(true);
+        addRecentFolder(vaultPath, config);
       } else {
         setError(result.message);
       }
@@ -48,11 +50,24 @@ export default function GitHubSetup() {
   const handleSkip = () => {
     setGitHubConfig(null);
     setGithubSetupComplete(true);
+    if (vaultPath) {
+      addRecentFolder(vaultPath);
+    }
+  };
+
+  const handleBack = () => {
+    setVaultPath(null);
   };
 
   return (
     <div className="h-screen bg-[#0d1117] flex items-center justify-center">
         <div className="max-w-md w-full p-8">
+        <button
+          onClick={handleBack}
+          className="mb-4 text-sm text-[#6e7681] hover:text-[#c9d1d9] transition-colors flex items-center gap-1"
+        >
+          ← Back
+        </button>
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-[#c9d1d9] mb-2">GitHub Configuration</h1>
           <p className="text-[#6e7681]">Connect your GitHub repository to sync your vault</p>

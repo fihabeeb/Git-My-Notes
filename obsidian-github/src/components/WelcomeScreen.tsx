@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store";
 
 export default function WelcomeScreen() {
-  const { vaultPath, setVaultPath, setGitHubConfig, setGithubSetupComplete, setRecentFolders, addRecentFolder, recentFolders } = useAppStore();
+  const { vaultPath, setVaultPath, setGitHubConfig, setGithubSetupComplete, setRecentFolders, addRecentFolder, recentFolders, getRecentFolder } = useAppStore();
   const [localPath, setLocalPath] = useState("");
 
   const handleReset = () => {
@@ -29,18 +29,24 @@ export default function WelcomeScreen() {
     }
   };
 
-  const handleOpenVault = async (path: string) => {
-    const absPath = await invoke<string>("make_absolute", { path });
+  const handleOpenVault = async (folder: { path: string; gitHubConfig?: { token: string; owner: string; repo: string } }) => {
+    const absPath = await invoke<string>("make_absolute", { path: folder.path });
     const normalizedPath = absPath.replace(/\\/g, "/");
     setVaultPath(normalizedPath);
+    
+    if (folder.gitHubConfig) {
+      setGitHubConfig(folder.gitHubConfig);
+      setGithubSetupComplete(true);
+    }
   };
 
   const handleCreateVault = async () => {
     if (localPath) {
       const absPath = await invoke<string>("make_absolute", { path: localPath });
       const normalizedPath = absPath.replace(/\\/g, "/");
+      const recentFolder = getRecentFolder(normalizedPath);
       setVaultPath(normalizedPath);
-      addRecentFolder(normalizedPath);
+      addRecentFolder(normalizedPath, recentFolder?.gitHubConfig);
     }
   };
 
@@ -48,8 +54,9 @@ export default function WelcomeScreen() {
     if (localPath) {
       const absPath = await invoke<string>("make_absolute", { path: localPath });
       const normalizedPath = absPath.replace(/\\/g, "/");
+      const recentFolder = getRecentFolder(normalizedPath);
       setVaultPath(normalizedPath);
-      addRecentFolder(normalizedPath);
+      addRecentFolder(normalizedPath, recentFolder?.gitHubConfig);
     } else if (!vaultPath) {
       alert("Please select a vault folder first using 'Browse'");
       return;
@@ -68,14 +75,17 @@ export default function WelcomeScreen() {
           <div className="bg-[#161b22] p-4 rounded-lg border border-[#30363d] mb-6">
             <h3 className="text-sm font-semibold text-[#c9d1d9] mb-3">Recent Folders</h3>
             <div className="space-y-1">
-              {recentFolders.map((folder, index) => (
+              {recentFolders.map((folder) => (
                 <button
-                  key={index}
+                  key={folder.path}
                   onClick={() => handleOpenVault(folder)}
-                  className="w-full text-left px-3 py-2 text-sm text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#30363d] rounded transition-colors truncate"
-                  title={folder}
+                  className="w-full text-left px-3 py-2 text-sm text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#30363d] rounded transition-colors truncate flex items-center justify-between"
+                  title={folder.path}
                 >
-                  {folder.split("/").pop() || folder}
+                  <span className="truncate">{folder.path.split("/").pop() || folder.path}</span>
+                  {folder.gitHubConfig && (
+                    <span className="text-xs text-[#238636] ml-2 shrink-0">GitHub</span>
+                  )}
                 </button>
               ))}
             </div>
