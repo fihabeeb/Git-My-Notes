@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store";
 
 export default function WelcomeScreen() {
-  const { setVaultPath, setGitHubConfig, setGithubSetupComplete } = useAppStore();
+  const { vaultPath, setVaultPath, setGitHubConfig, setGithubSetupComplete, setRecentFolders, addRecentFolder, recentFolders } = useAppStore();
   const [localPath, setLocalPath] = useState("");
 
   const handleReset = () => {
     setVaultPath(null);
     setGitHubConfig(null);
     setGithubSetupComplete(false);
+    setRecentFolders([]);
     localStorage.removeItem("obsidian-github-storage");
     window.location.reload();
   };
@@ -22,29 +24,63 @@ export default function WelcomeScreen() {
     });
     
     if (selected && typeof selected === "string") {
-      setLocalPath(selected);
+      const absPath = await invoke<string>("make_absolute", { path: selected });
+      setLocalPath(absPath);
     }
   };
 
-  const handleCreateVault = () => {
+  const handleOpenVault = async (path: string) => {
+    const absPath = await invoke<string>("make_absolute", { path });
+    const normalizedPath = absPath.replace(/\\/g, "/");
+    setVaultPath(normalizedPath);
+  };
+
+  const handleCreateVault = async () => {
     if (localPath) {
-      const normalizedPath = localPath.replace(/\\/g, "/");
+      const absPath = await invoke<string>("make_absolute", { path: localPath });
+      const normalizedPath = absPath.replace(/\\/g, "/");
       setVaultPath(normalizedPath);
+      addRecentFolder(normalizedPath);
     }
   };
 
   const handleCloneRepo = async () => {
-    // Will be handled in GitHubSetup
-    setVaultPath(localPath || "./vault");
+    if (localPath) {
+      const absPath = await invoke<string>("make_absolute", { path: localPath });
+      const normalizedPath = absPath.replace(/\\/g, "/");
+      setVaultPath(normalizedPath);
+      addRecentFolder(normalizedPath);
+    } else if (!vaultPath) {
+      alert("Please select a vault folder first using 'Browse'");
+      return;
+    }
   };
 
   return (
-    <div className="h-screen bg-[#0d1117] flex items-center justify-center">
-      <div className="max-w-md w-full p-8">
+    <div className="h-screen bg-[#0d1117] flex items-center justify-center overflow-y-auto">
+      <div className="max-w-lg w-full p-8">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-[#c9d1d9] mb-2">Obsidian GitHub</h1>
           <p className="text-[#6e7681]">Your notes, synced to GitHub</p>
         </div>
+
+        {recentFolders.length > 0 && (
+          <div className="bg-[#161b22] p-4 rounded-lg border border-[#30363d] mb-6">
+            <h3 className="text-sm font-semibold text-[#c9d1d9] mb-3">Recent Folders</h3>
+            <div className="space-y-1">
+              {recentFolders.map((folder, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleOpenVault(folder)}
+                  className="w-full text-left px-3 py-2 text-sm text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#30363d] rounded transition-colors truncate"
+                  title={folder}
+                >
+                  {folder.split("/").pop() || folder}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="space-y-6">
           <div className="bg-[#161b22] p-6 rounded-lg border border-[#30363d]">
@@ -71,6 +107,11 @@ export default function WelcomeScreen() {
             >
               Open Vault
             </button>
+            {vaultPath && (
+              <p className="text-xs text-[#6e7681] mt-2 truncate" title={vaultPath}>
+                Current: {vaultPath}
+              </p>
+            )}
           </div>
 
           <div className="text-center text-[#6e7681]">

@@ -24,6 +24,7 @@ interface AppState {
   isSyncing: boolean;
   syncStatus: string;
   githubSetupComplete: boolean;
+  recentFolders: string[];
   
   setVaultPath: (path: string | null) => void;
   setFiles: (files: FileNode[]) => void;
@@ -33,11 +34,13 @@ interface AppState {
   setIsSyncing: (syncing: boolean) => void;
   setSyncStatus: (status: string) => void;
   setGithubSetupComplete: (complete: boolean) => void;
+  setRecentFolders: (folders: string[]) => void;
+  addRecentFolder: (path: string) => void;
 }
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       vaultPath: null,
       files: [],
       activeFile: null,
@@ -47,6 +50,7 @@ export const useAppStore = create<AppState>()(
       isSyncing: false,
       syncStatus: "Not connected",
       githubSetupComplete: false,
+      recentFolders: [],
       
       setVaultPath: (path) => set({ vaultPath: path }),
       setFiles: (files) => set({ files }),
@@ -56,6 +60,13 @@ export const useAppStore = create<AppState>()(
       setIsSyncing: (syncing) => set({ isSyncing: syncing }),
       setSyncStatus: (status) => set({ syncStatus: status }),
       setGithubSetupComplete: (complete) => set({ githubSetupComplete: complete }),
+      setRecentFolders: (folders) => set({ recentFolders: folders }),
+      addRecentFolder: (path) => {
+        const { recentFolders } = get();
+        const filtered = recentFolders.filter(f => f !== path);
+        const updated = [path, ...filtered].slice(0, 10);
+        set({ recentFolders: updated });
+      },
     }),
     {
       name: "obsidian-github-storage",

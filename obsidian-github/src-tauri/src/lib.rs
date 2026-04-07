@@ -3,6 +3,14 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
+fn normalize_path(path: &str) -> String {
+    if cfg!(windows) {
+        path.replace('/', "\\")
+    } else {
+        path.to_string()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GitStatus {
     pub is_repo: bool,
@@ -19,21 +27,68 @@ pub struct CloneResult {
 
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
-    fs::read_to_string(&path).map_err(|e| e.to_string())
+    let normalized = normalize_path(&path);
+    eprintln!("[READ] Path: {} -> Normalized: {}", path, normalized);
+    fs::read_to_string(&normalized).map_err(|e| format!("Failed to read {}: {}", path, e))
 }
 
 #[tauri::command]
 fn write_file(path: String, content: String) -> Result<(), String> {
-    fs::write(&path, content).map_err(|e| e.to_string())
+    let normalized = normalize_path(&path);
+    eprintln!("[WRITE] Path: {} -> Normalized: {}", path, normalized);
+    if let Some(parent) = Path::new(&normalized).parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    fs::write(&normalized, content).map_err(|e| format!("Failed to write {}: {}", path, e))
 }
 
 #[tauri::command]
 fn create_file(path: String) -> Result<(), String> {
-    let path = Path::new(&path);
-    if path.exists() {
+    let normalized = normalize_path(&path);
+    eprintln!("[CREATE] Path: {} -> Normalized: {}", path, normalized);
+    let path_ref = Path::new(&normalized);
+    if path_ref.exists() {
         return Err("File already exists".to_string());
     }
-    fs::write(&path, "").map_err(|e| e.to_string())
+    if let Some(parent) = path_ref.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    fs::write(&normalized, "").map_err(|e| format!("Failed to create file: {}", e))
+}
+
+#[tauri::command]
+fn check_path(path: String) -> Result<String, String> {
+    let normalized = normalize_path(&path);
+    let path_ref = Path::new(&normalized);
+    if path_ref.exists() {
+        Ok(format!("Exists: {} (type: {})", normalized, if path_ref.is_dir() { "directory" } else { "file" }))
+    } else {
+        Ok(format!("Does not exist: {}", normalized))
+    }
+}
+
+#[tauri::command]
+fn get_current_dir() -> String {
+    std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "unknown".to_string())
+}
+
+#[tauri::command]
+fn make_absolute(path: String) -> Result<String, String> {
+    let normalized = normalize_path(&path);
+    let p = Path::new(&normalized);
+    if p.is_absolute() {
+        Ok(normalized)
+    } else {
+        dirs::document_dir()
+            .or_else(|| dirs::home_dir())
+            .ok_or_else(|| "Could not find home or documents directory".to_string())
+            .map(|base| {
+                let abs = base.join(&normalized);
+                abs.to_string_lossy().to_string()
+            })
+    }
 }
 
 #[tauri::command]
@@ -176,6 +231,9 @@ pub fn run() {
             read_file,
             write_file,
             create_file,
+            check_path,
+            get_current_dir,
+            make_absolute,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

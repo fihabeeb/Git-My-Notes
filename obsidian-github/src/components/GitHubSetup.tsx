@@ -16,21 +16,24 @@ export default function GitHubSetup() {
       return;
     }
 
+    if (!vaultPath) {
+      setError("Please select a vault folder first");
+      return;
+    }
+
     setIsLoading(true);
     setError("");
 
     try {
-      const repoPath = `${owner}-${repo}`;
       const authUrl = `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
       const result = await invoke<{ success: boolean; message: string }>("clone_repo", {
         url: authUrl,
-        localPath: repoPath,
+        localPath: vaultPath,
         token,
       });
 
       if (result.success) {
         setGitHubConfig({ token, owner, repo });
-        setVaultPath(repoPath);
         setGithubSetupComplete(true);
       } else {
         setError(result.message);
@@ -49,10 +52,15 @@ export default function GitHubSetup() {
 
   return (
     <div className="h-screen bg-[#0d1117] flex items-center justify-center">
-      <div className="max-w-md w-full p-8">
+        <div className="max-w-md w-full p-8">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-[#c9d1d9] mb-2">GitHub Configuration</h1>
           <p className="text-[#6e7681]">Connect your GitHub repository to sync your vault</p>
+          {vaultPath && (
+            <p className="text-xs text-yellow-500 mt-2 truncate" title={vaultPath}>
+              Vault: {vaultPath}
+            </p>
+          )}
         </div>
 
         <div className="bg-[#161b22] p-6 rounded-lg border border-[#30363d]">
