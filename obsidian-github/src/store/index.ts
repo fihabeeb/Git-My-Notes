@@ -60,7 +60,11 @@ export const useAppStore = create<AppState>()(
       recentFolders: [],
       
       setVaultPath: (path) => set({ vaultPath: path }),
-      setFiles: (files) => set({ files }),
+      setFiles: (files) => {
+        const { vaultPath: currentVaultPath } = get();
+        const shouldClear = currentVaultPath && files.length === 0;
+        set({ files: shouldClear ? [] : files });
+      },
       setActiveFile: (file) => set({ activeFile: file }),
       setEditorContent: (content) => set({ editorContent: content }),
       setGitHubConfig: (config) => set({ gitHubConfig: config, isGitHubConnected: config !== null }),

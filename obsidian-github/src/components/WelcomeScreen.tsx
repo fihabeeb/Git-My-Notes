@@ -82,7 +82,7 @@ export default function WelcomeScreen() {
                   className="w-full text-left px-3 py-2 text-sm text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#30363d] rounded transition-colors truncate flex items-center justify-between"
                   title={folder.path}
                 >
-                  <span className="truncate">{folder.path.split("/").pop() || folder.path}</span>
+                  <span className="truncate">{(folder.path || "").split("/").pop() || folder.path}</span>
                   {folder.gitHubConfig && (
                     <span className="text-xs text-[#238636] ml-2 shrink-0">GitHub</span>
                   )}

@@ -48,7 +48,7 @@ fn create_file(path: String) -> Result<(), String> {
     eprintln!("[CREATE] Path: {} -> Normalized: {}", path, normalized);
     let path_ref = Path::new(&normalized);
     if path_ref.exists() {
-        return Err("File already exists".to_string());
+        return Ok(());
     }
     if let Some(parent) = path_ref.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;

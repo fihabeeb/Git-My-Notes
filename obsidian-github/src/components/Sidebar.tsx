@@ -84,6 +84,7 @@ export default function Sidebar() {
   const { vaultPath, files, setFiles, setActiveFile, setEditorContent, setVaultPath, setGitHubConfig, setGithubSetupComplete } = useAppStore();
   const [showNewFileInput, setShowNewFileInput] = useState(false);
   const [newFileName, setNewFileName] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleGoBack = () => {
     setVaultPath(null);
@@ -93,7 +94,11 @@ export default function Sidebar() {
 
   useEffect(() => {
     if (vaultPath) {
-      loadDirectory(vaultPath).then(setFiles);
+      setIsLoading(true);
+      loadDirectory(vaultPath).then((loadedFiles) => {
+        setFiles(loadedFiles);
+        setIsLoading(false);
+      }).catch(() => setIsLoading(false));
     }
   }, [vaultPath, setFiles]);
 
@@ -152,7 +157,13 @@ export default function Sidebar() {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto py-2">
-        <FileTree nodes={files} />
+        {isLoading ? (
+          <div className="p-4 text-center text-[#6e7681] text-sm">Loading...</div>
+        ) : files.length === 0 ? (
+          <div className="p-4 text-center text-[#6e7681] text-sm">No .md files found</div>
+        ) : (
+          <FileTree nodes={files} />
+        )}
       </div>
       {showNewFileInput && (
         <div className="p-2 border-t border-[#30363d]">
