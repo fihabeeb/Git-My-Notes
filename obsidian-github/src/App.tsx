@@ -6,6 +6,7 @@ import Preview from "./components/Preview";
 import StatusBar from "./components/StatusBar";
 import WelcomeScreen from "./components/WelcomeScreen";
 import GitHubSetup from "./components/GitHubSetup";
+import ConflictBanner from "./components/ConflictBanner";
 
 function App() {
   const { vaultPath, githubSetupComplete } = useAppStore();
@@ -20,6 +21,7 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-[#0d1117]">
+      <ConflictBanner />
       <div className="flex-1 overflow-hidden">
         <PanelGroup direction="horizontal">
           <Panel defaultSize={20} minSize={15} maxSize={30}>

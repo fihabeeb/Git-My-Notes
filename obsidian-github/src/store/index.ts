@@ -20,6 +20,17 @@ export interface RecentFolder {
   lastOpened: number;
 }
 
+export interface AppSettings {
+  autoCommit: boolean;
+  autoSync: boolean;
+  syncInterval: number;
+  commitMessage: string;
+}
+
+export interface ConflictFile {
+  path: string;
+}
+
 interface AppState {
   vaultPath: string | null;
   files: FileNode[];
@@ -31,6 +42,8 @@ interface AppState {
   syncStatus: string;
   githubSetupComplete: boolean;
   recentFolders: RecentFolder[];
+  settings: AppSettings;
+  conflicts: ConflictFile[];
   
   setVaultPath: (path: string | null) => void;
   setFiles: (files: FileNode[]) => void;
@@ -43,6 +56,8 @@ interface AppState {
   setRecentFolders: (folders: RecentFolder[]) => void;
   addRecentFolder: (path: string, gitHubConfig?: GitHubConfig) => void;
   getRecentFolder: (path: string) => RecentFolder | undefined;
+  updateSettings: (settings: Partial<AppSettings>) => void;
+  setConflicts: (conflicts: ConflictFile[]) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -58,12 +73,17 @@ export const useAppStore = create<AppState>()(
       syncStatus: "Not connected",
       githubSetupComplete: false,
       recentFolders: [],
+      settings: {
+        autoCommit: true,
+        autoSync: false,
+        syncInterval: 300000,
+        commitMessage: "Update {filename}",
+      },
+      conflicts: [],
       
       setVaultPath: (path) => set({ vaultPath: path }),
       setFiles: (files) => {
-        const { vaultPath: currentVaultPath } = get();
-        const shouldClear = currentVaultPath && files.length === 0;
-        set({ files: shouldClear ? [] : files });
+        set({ files });
       },
       setActiveFile: (file) => set({ activeFile: file }),
       setEditorContent: (content) => set({ editorContent: content }),
@@ -87,9 +107,18 @@ export const useAppStore = create<AppState>()(
         const { recentFolders } = get();
         return recentFolders.find(f => f.path === path);
       },
+      updateSettings: (newSettings) => {
+        const { settings } = get();
+        set({ settings: { ...settings, ...newSettings } });
+      },
+      setConflicts: (conflicts) => set({ conflicts }),
     }),
     {
       name: "obsidian-github-storage",
+      partialize: (state) => ({ 
+        recentFolders: state.recentFolders,
+        settings: state.settings,
+      }),
     }
   )
 );

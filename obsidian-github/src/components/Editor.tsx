@@ -17,7 +17,7 @@ export default function Editor() {
   const lastSavedContentRef = useRef<string>("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   
-  const { activeFile, editorContent, setEditorContent, vaultPath } = useAppStore();
+  const { activeFile, editorContent, setEditorContent, vaultPath, gitHubConfig, settings } = useAppStore();
 
   const saveFile = useCallback(async (content?: string) => {
     if (!activeFile || !vaultPath) return;
@@ -29,11 +29,21 @@ export default function Editor() {
       await invoke("write_file", { path: activeFile, content: contentToSave });
       lastSavedContentRef.current = contentToSave;
       setSaveStatus("saved");
+
+      if (settings.autoCommit && gitHubConfig) {
+        const fileName = activeFile.split("/").pop()?.replace(".md", "") || "unknown";
+        const message = settings.commitMessage.replace("{filename}", fileName);
+        try {
+          await invoke("commit_changes", { localPath: vaultPath, message });
+        } catch (e) {
+          console.error("Failed to commit:", e);
+        }
+      }
     } catch (e) {
       console.error("Failed to save file:", e);
       setSaveStatus("unsaved");
     }
-  }, [activeFile, vaultPath, editorContent]);
+  }, [activeFile, vaultPath, editorContent, settings.autoCommit, settings.commitMessage, gitHubConfig]);
 
   const scheduleAutoSave = useCallback(() => {
     if (saveTimeoutRef.current) {

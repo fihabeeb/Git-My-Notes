@@ -40,3 +40,9 @@ src-tauri/target/
 *.lib
 *.obj
 *.o
+
+src-tauri/debug/
+debug/
+target/
+**/*.rs.bk
+*.pdb

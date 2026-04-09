@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store";
@@ -6,6 +6,30 @@ import { useAppStore } from "../store";
 export default function WelcomeScreen() {
   const { vaultPath, setVaultPath, setGitHubConfig, setGithubSetupComplete, setRecentFolders, addRecentFolder, recentFolders, getRecentFolder } = useAppStore();
   const [localPath, setLocalPath] = useState("");
+
+  useEffect(() => {
+    const checkAndAutoOpen = async () => {
+      if (localPath && localPath.length > 2) {
+        try {
+          const absPath = await invoke<string>("make_absolute", { path: localPath });
+          const normalizedPath = absPath.replace(/\\/g, "/");
+          const exists = await invoke<boolean>("check_repo_exists", { localPath: normalizedPath });
+          if (exists) {
+            const recentFolder = getRecentFolder(normalizedPath);
+            setVaultPath(normalizedPath);
+            if (recentFolder?.gitHubConfig) {
+              setGitHubConfig(recentFolder.gitHubConfig);
+              setGithubSetupComplete(true);
+            } else {
+              addRecentFolder(normalizedPath);
+            }
+          }
+        } catch (e) {
+        }
+      }
+    };
+    checkAndAutoOpen();
+  }, [localPath, setVaultPath, setGitHubConfig, setGithubSetupComplete, addRecentFolder, getRecentFolder]);
 
   const handleReset = () => {
     setVaultPath(null);
@@ -37,6 +61,12 @@ export default function WelcomeScreen() {
     if (folder.gitHubConfig) {
       setGitHubConfig(folder.gitHubConfig);
       setGithubSetupComplete(true);
+    } else {
+      const recentFolder = getRecentFolder(normalizedPath);
+      if (recentFolder?.gitHubConfig) {
+        setGitHubConfig(recentFolder.gitHubConfig);
+        setGithubSetupComplete(true);
+      }
     }
   };
 

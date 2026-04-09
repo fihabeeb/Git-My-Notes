@@ -1,27 +1,93 @@
+import { useEffect, useRef } from "react";
 import { useAppStore } from "../store";
 import { invoke } from "@tauri-apps/api/core";
+import CommitHistory from "./CommitHistory";
 
 export default function StatusBar() {
-  const { isGitHubConnected, gitHubConfig, syncStatus, isSyncing, setIsSyncing, setSyncStatus } = useAppStore();
+  const { isGitHubConnected, gitHubConfig, syncStatus, isSyncing, setIsSyncing, setSyncStatus, vaultPath, settings, setConflicts } = useAppStore();
+  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleSync = async () => {
-    if (!gitHubConfig) return;
-    setIsSyncing(true);
-    setSyncStatus("Syncing...");
+  const checkConflicts = async () => {
+    if (!vaultPath) return;
+    try {
+      const conflicts = await invoke<{ path: string }[]>("check_for_conflicts", { localPath: vaultPath });
+      setConflicts(conflicts);
+    } catch (e) {
+      console.error("Failed to check conflicts:", e);
+    }
+  };
+
+  const handleSync = async (showStatus = true) => {
+    if (!gitHubConfig || !vaultPath) return;
+    if (showStatus) setIsSyncing(true);
+    setSyncStatus("Pulling...");
     
     try {
-      await invoke("pull_repo", { 
-        localPath: gitHubConfig.owner + "-" + gitHubConfig.repo,
+      const result = await invoke<{ success: boolean; message: string; has_conflict: boolean }>("pull_repo", { 
+        localPath: vaultPath,
         token: gitHubConfig.token 
       });
-      setSyncStatus("Synced");
+      
+      console.log("Pull result:", result);
+      
+      if (!result.success) {
+        setSyncStatus("Pull failed: " + result.message);
+        if (showStatus) setIsSyncing(false);
+        return;
+      }
+      
+      if (result.message === "Already up to date") {
+        setSyncStatus("Already up to date");
+        if (showStatus) setIsSyncing(false);
+        return;
+      }
+      
+      setSyncStatus("Pushing...");
+      
+      const pushResult = await invoke<{ success: boolean; message: string }>("push_repo", { 
+        localPath: vaultPath,
+        token: gitHubConfig.token,
+        message: "Auto-sync commit"
+      });
+      
+      console.log("Push result:", pushResult);
+      
+      if (!pushResult.success) {
+        setSyncStatus("Push failed: " + pushResult.message);
+      } else {
+        setSyncStatus("Synced");
+      }
+      
+      await checkConflicts();
     } catch (e) {
-      setSyncStatus("Sync failed");
-      console.error(e);
+      console.error("Sync error:", e);
+      setSyncStatus("Sync failed: " + String(e));
     }
     
-    setIsSyncing(false);
+    if (showStatus) setIsSyncing(false);
   };
+
+  useEffect(() => {
+    if (settings.autoSync && isGitHubConnected && settings.syncInterval > 0) {
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+      }
+      syncIntervalRef.current = setInterval(() => {
+        handleSync(false);
+      }, settings.syncInterval);
+    } else {
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+        syncIntervalRef.current = null;
+      }
+    }
+
+    return () => {
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+      }
+    };
+  }, [settings.autoSync, settings.syncInterval, isGitHubConnected, gitHubConfig]);
 
   return (
     <div className="h-6 bg-[#161b22] border-t border-[#30363d] flex items-center justify-between px-3 text-xs text-[#6e7681]">
@@ -33,8 +99,11 @@ export default function StatusBar() {
       </div>
       <div className="flex items-center gap-4">
         {isGitHubConnected && (
+          <CommitHistory />
+        )}
+        {isGitHubConnected && (
           <button
-            onClick={handleSync}
+            onClick={() => handleSync(true)}
             disabled={isSyncing}
             className="hover:text-[#c9d1d9] transition-colors disabled:opacity-50"
           >

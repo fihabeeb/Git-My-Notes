@@ -8,8 +8,8 @@ function normalizePath(path: string): string {
 }
 
 async function loadDirectory(path: string): Promise<FileNode[]> {
+  const normalizedPath = normalizePath(path);
   try {
-    const normalizedPath = normalizePath(path);
     const entries = await readDir(normalizedPath);
     const nodes: FileNode[] = [];
     
@@ -37,7 +37,6 @@ async function loadDirectory(path: string): Promise<FileNode[]> {
       return a.name.localeCompare(b.name);
     });
   } catch (e) {
-    console.error("Error loading directory:", e);
     return [];
   }
 }
@@ -93,14 +92,15 @@ export default function Sidebar() {
   };
 
   useEffect(() => {
-    if (vaultPath) {
-      setIsLoading(true);
-      loadDirectory(vaultPath).then((loadedFiles) => {
-        setFiles(loadedFiles);
-        setIsLoading(false);
-      }).catch(() => setIsLoading(false));
-    }
-  }, [vaultPath, setFiles]);
+    if (!vaultPath) return;
+    setIsLoading(true);
+    loadDirectory(vaultPath).then((loadedFiles) => {
+      setFiles(loadedFiles);
+      setIsLoading(false);
+    }).catch(() => {
+      setIsLoading(false);
+    });
+  }, [vaultPath]);
 
   const handleCreateFile = async () => {
     if (!newFileName.trim() || !vaultPath) return;

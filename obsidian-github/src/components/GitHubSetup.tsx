@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAppStore } from "../store";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -9,6 +9,26 @@ export default function GitHubSetup() {
   const [repo, setRepo] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [repoExists, setRepoExists] = useState(false);
+
+  useEffect(() => {
+    const checkExists = async () => {
+      if (vaultPath && owner && repo) {
+        try {
+          const exists = await invoke<boolean>("check_repo_exists", { localPath: vaultPath });
+          setRepoExists(exists);
+          if (exists) {
+            setError("");
+          }
+        } catch (e) {
+          setRepoExists(false);
+        }
+      } else {
+        setRepoExists(false);
+      }
+    };
+    checkExists();
+  }, [vaultPath, owner, repo]);
 
   const handleConnect = async () => {
     if (!token || !owner || !repo) {
@@ -25,6 +45,15 @@ export default function GitHubSetup() {
     setError("");
 
     try {
+      if (repoExists) {
+        const config = { token, owner, repo };
+        setGitHubConfig(config);
+        setGithubSetupComplete(true);
+        addRecentFolder(vaultPath, config);
+        setIsLoading(false);
+        return;
+      }
+
       const authUrl = `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
       const result = await invoke<{ success: boolean; message: string }>("clone_repo", {
         url: authUrl,
@@ -126,6 +155,12 @@ export default function GitHubSetup() {
 
             {error && (
               <p className="text-sm text-red-500 bg-red-500/10 p-2 rounded">{error}</p>
+            )}
+
+            {repoExists && (
+              <p className="text-sm text-green-500 bg-green-500/10 p-2 rounded">
+                Repository already exists locally. Click "Connect & Clone" to continue.
+              </p>
             )}
 
             <button
