@@ -18,6 +18,13 @@ export interface RecentFolder {
   path: string;
   gitHubConfig?: GitHubConfig;
   lastOpened: number;
+  localName?: string;
+}
+
+export interface RecentFolder {
+  path: string;
+  gitHubConfig?: GitHubConfig;
+  lastOpened: number;
 }
 
 export interface AppSettings {

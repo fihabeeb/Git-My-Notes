@@ -133,9 +133,19 @@ async fn clone_repo(
 }
 
 #[tauri::command]
-async fn pull_repo(local_path: String, token: String) -> Result<CloneResult, String> {
-    eprintln!("[PULL] Starting pull for: {}", local_path);
-    let repo = Repository::open(&local_path).map_err(|e| e.to_string())?;
+async fn pull_repo(local_path: String, token: String, subfolder: Option<String>) -> Result<CloneResult, String> {
+    let local_path_normalized = normalize_path(&local_path);
+    let git_dir = Path::new(&local_path_normalized).join(".git");
+    if !git_dir.exists() {
+        eprintln!("[PULL] No .git folder found! Initializing new repo...");
+        
+        Repository::init(&local_path_normalized).map_err(|e| e.to_string())?;
+        eprintln!("[PULL] Git repo initialized");
+        
+        return Ok(CloneResult::success("Repository initialized. Use sync to push your files to GitHub."));
+    }
+    
+    let repo = Repository::open(&local_path_normalized).map_err(|e| e.to_string())?;
     let mut remote = repo.find_remote("origin").map_err(|e| e.to_string())?;
 
     let token_clone = token.clone();
@@ -152,50 +162,39 @@ async fn pull_repo(local_path: String, token: String) -> Result<CloneResult, Str
     let branch_name = head_branch.shorthand().unwrap_or("main");
     eprintln!("[PULL] Current branch: {}", branch_name);
     
-    let refspec = format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name);
-    eprintln!("[PULL] Using refspec: {}", refspec);
+    eprintln!("[PULL] Fetching all refs...");
+    let empty_refspecs: [&str; 0] = [];
+    let fetch_result = remote.fetch(&empty_refspecs, Some(&mut opts), None);
     
-    if let Err(e) = remote.fetch(&[&refspec], Some(&mut opts), None) {
-        eprintln!("[PULL] Fetch error: {}", e);
-        return Err(e.to_string());
+    if let Err(fetch_err) = fetch_result {
+        eprintln!("[PULL] Fetch failed (non-critical): {}", fetch_err);
     }
     
-    eprintln!("[PULL] Fetch completed");
+    eprintln!("[PULL] Continuing with merge analysis...");
 
-    let (analysis, _) = {
-        let fetch_head = match repo.find_reference("FETCH_HEAD") {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("[PULL] FETCH_HEAD not found, assuming up to date: {}", e);
+    let mut pull_successful = false;
+    
+    if let Ok(fetch_head) = repo.find_reference("FETCH_HEAD") {
+        if let Ok(commit) = repo.reference_to_annotated_commit(&fetch_head) {
+            let (analysis, _) = repo.merge_analysis(&[&commit]).map_err(|e| e.to_string())?;
+            eprintln!("[PULL] Merge analysis: up_to_date={}, normal={}, fast_forward={}", analysis.is_up_to_date(), analysis.is_normal(), analysis.is_fast_forward());
+            
+            if analysis.is_up_to_date() {
                 return Ok(CloneResult::success("Already up to date"));
             }
-        };
-        let commit = match repo.reference_to_annotated_commit(&fetch_head) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("[PULL] Could not get commit from FETCH_HEAD: {}", e);
-                return Ok(CloneResult::success("Already up to date"));
+            
+            if analysis.is_fast_forward() || analysis.is_normal() {
+                repo.checkout_head(None).map_err(|e| e.to_string())?;
+                pull_successful = true;
             }
-        };
-        repo.merge_analysis(&[&commit]).map_err(|e| e.to_string())?
-    };
-    
-    eprintln!("[PULL] Merge analysis: up_to_date={}, normal={}, fast_forward={}", analysis.is_up_to_date(), analysis.is_normal(), analysis.is_fast_forward());
-    
-    if analysis.is_up_to_date() {
-        return Ok(CloneResult::success("Already up to date"));
-    }
-    
-    if analysis.is_fast_forward() {
-        repo.checkout_head(None).map_err(|e| e.to_string())?;
-        return Ok(CloneResult::success("Fast forward successful"));
-    }
-    
-    if analysis.is_normal() {
-        repo.checkout_head(None).map_err(|e| e.to_string())?;
+        }
     }
 
-    Ok(CloneResult::success("Pull successful"))
+    if pull_successful {
+        Ok(CloneResult::success("Pull successful"))
+    } else {
+        Ok(CloneResult::success("Already up to date"))
+    }
 }
 
 #[tauri::command]
@@ -231,8 +230,90 @@ pub struct ConflictFile {
 }
 
 #[tauri::command]
-async fn push_repo(local_path: String, token: String, message: String) -> Result<CloneResult, String> {
-    let repo = Repository::open(&local_path).map_err(|e| e.to_string())?;
+async fn push_repo(local_path: String, token: String, message: String, subfolder: Option<String>) -> Result<CloneResult, String> {
+    let local_path_normalized = normalize_path(&local_path);
+    let git_dir = Path::new(&local_path_normalized).join(".git");
+    eprintln!("[PUSH] Checking for .git in: {}", local_path_normalized);
+    
+    let subfolder_path = subfolder.clone().unwrap_or_default();
+    
+    if !git_dir.exists() {
+        eprintln!("[PUSH] .git not found! Initializing...");
+        
+        let repo = match Repository::init(&local_path_normalized) {
+            Ok(r) => r,
+            Err(e) => return Err(format!("Failed to init repo: {}", e)),
+        };
+        
+        eprintln!("[PUSH] Repo initialized");
+        
+        let auth_url = format!("https://x-access-token:{}@github.com/", token);
+        
+        let mut remote = match repo.remote("origin", &auth_url) {
+            Ok(r) => r,
+            Err(e) => return Err(format!("Failed to create remote: {}", e)),
+        };
+        
+        let token_clone = token.clone();
+        let mut callbacks = RemoteCallbacks::new();
+        callbacks.credentials(move |_url, _username_from_url, _cred_type| {
+            git2::Cred::userpass_plaintext("oauth2", &token_clone)
+        });
+
+        let mut opts = git2::PushOptions::new();
+        opts.remote_callbacks(callbacks);
+
+        repo.config().unwrap().set_str("user.email", "obsidian-github@local").ok();
+        repo.config().unwrap().set_str("user.name", "Obsidian GitHub").ok();
+
+        let sig = repo.signature().unwrap();
+
+        let mut index = repo.index().unwrap();
+        
+        if subfolder_path.is_empty() {
+            index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None).ok();
+        } else {
+            let local_subfolder = Path::new(&local_path_normalized).join(&subfolder_path);
+            if local_subfolder.exists() {
+                let prefix = format!("{}/*", subfolder_path);
+                index.add_all([prefix.as_str()].iter(), git2::IndexAddOption::DEFAULT, None).ok();
+            }
+        }
+        
+        let diff = repo.diff_index_to_workdir(None, None).unwrap();
+        if diff.deltas().len() == 0 {
+            return Ok(CloneResult { success: true, message: "No changes to push".to_string(), has_conflict: false });
+        }
+        
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+
+        repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &[]).ok();
+
+        let branch_name = repo.head().ok().and_then(|h| h.shorthand().map(String::from)).unwrap_or_else(|| "main".to_string());
+        let refspec = format!("HEAD:refs/heads/{}", branch_name);
+        
+        if let Err(e) = remote.push(&[&refspec], Some(&mut opts)) {
+            eprintln!("[PUSH] Push to {} failed, trying main: {}", branch_name, e);
+            if branch_name != "main" {
+                let fallback_refspec = "HEAD:refs/heads/main";
+                if let Err(fallback_err) = remote.push(&[fallback_refspec], Some(&mut opts)) {
+                    eprintln!("[PUSH] Push to main also failed: {}", fallback_err);
+                    return Err(format!("Push failed: {}", fallback_err));
+                }
+            } else {
+                return Err(format!("Push failed: {}", e));
+            }
+        }
+        
+        return Ok(CloneResult {
+            success: true,
+            message: "Repository initialized and pushed!".to_string(),
+            has_conflict: false,
+        });
+    }
+    
+    let repo = Repository::open(&local_path_normalized).map_err(|e| e.to_string())?;
     let mut remote = repo.find_remote("origin").map_err(|e| e.to_string())?;
 
     let token_clone = token.clone();
@@ -253,26 +334,64 @@ async fn push_repo(local_path: String, token: String, message: String) -> Result
 
     let sig = repo.signature().map_err(|e| e.to_string())?;
     let head = repo.head().map_err(|e| e.to_string())?;
-    let head_commit = head.peel_to_commit().map_err(|e| e.to_string())?;
     let branch_name = head.shorthand().unwrap_or("main");
+    eprintln!("[PUSH] Local branch: {}", branch_name);
+    eprintln!("[PUSH] Is branch: {}", head.is_branch());
+    eprintln!("[PUSH] Target: {:?}", head.target());
+    eprintln!("[PUSH] Subfolder: {}", subfolder_path);
+
+    let refspec = format!("HEAD:refs/heads/{}", branch_name);
+    eprintln!("[PUSH] Using refspec: {}", refspec);
 
     let mut index = repo.index().map_err(|e| e.to_string())?;
-    index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
-        .map_err(|e| e.to_string())?;
+    
+    if subfolder_path.is_empty() {
+        index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+            .map_err(|e| e.to_string())?;
+    } else {
+        let local_subfolder = Path::new(&local_path_normalized).join(&subfolder_path);
+        if local_subfolder.exists() {
+            let prefix = format!("{}/*", subfolder_path);
+            index.add_all([prefix.as_str()].iter(), git2::IndexAddOption::DEFAULT, None)
+                .map_err(|e| e.to_string())?;
+        } else {
+            index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    
     let tree_id = index.write_tree().map_err(|e| e.to_string())?;
     let tree = repo.find_tree(tree_id).map_err(|e| e.to_string())?;
 
+    let head_commit = head.peel_to_commit();
+    eprintln!("[PUSH] Head commit: {:?}", head_commit.is_ok());
+    
+    if head_commit.is_err() {
+        eprintln!("[PUSH] ERROR: Cannot get head commit - repository might be in bad state");
+        return Err("Cannot get head commit - repository might be in bad state".to_string());
+    }
+    
+    let c = head_commit.unwrap();
+    
     repo.commit(
         Some("HEAD"),
         &sig,
         &sig,
         &message,
         &tree,
-        &[&head_commit],
+        &[&c],
     ).map_err(|e| e.to_string())?;
 
-    let refspec = format!("HEAD:refs/heads/{}", branch_name);
-    remote.push(&[&refspec], Some(&mut opts)).map_err(|e| e.to_string())?;
+    eprintln!("[PUSH] Commit done, about to push...");
+
+    let push_result = remote.push(&[&refspec], Some(&mut opts));
+    
+    if let Err(push_err) = push_result {
+        eprintln!("[PUSH] Push failed: {}", push_err);
+        return Err(format!("Push failed: {}", push_err));
+    }
+    
+    eprintln!("[PUSH] Completed successfully");
 
     Ok(CloneResult {
         success: true,

@@ -25,19 +25,11 @@ export default function StatusBar() {
     try {
       const result = await invoke<{ success: boolean; message: string; has_conflict: boolean }>("pull_repo", { 
         localPath: vaultPath,
-        token: gitHubConfig.token 
+        token: gitHubConfig.token,
       });
-      
-      console.log("Pull result:", result);
       
       if (!result.success) {
         setSyncStatus("Pull failed: " + result.message);
-        if (showStatus) setIsSyncing(false);
-        return;
-      }
-      
-      if (result.message === "Already up to date") {
-        setSyncStatus("Already up to date");
         if (showStatus) setIsSyncing(false);
         return;
       }
@@ -47,10 +39,8 @@ export default function StatusBar() {
       const pushResult = await invoke<{ success: boolean; message: string }>("push_repo", { 
         localPath: vaultPath,
         token: gitHubConfig.token,
-        message: "Auto-sync commit"
+        message: "Auto-sync commit",
       });
-      
-      console.log("Push result:", pushResult);
       
       if (!pushResult.success) {
         setSyncStatus("Push failed: " + pushResult.message);
@@ -59,9 +49,9 @@ export default function StatusBar() {
       }
       
       await checkConflicts();
-    } catch (e) {
-      console.error("Sync error:", e);
-      setSyncStatus("Sync failed: " + String(e));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setSyncStatus("Sync failed: " + msg);
     }
     
     if (showStatus) setIsSyncing(false);

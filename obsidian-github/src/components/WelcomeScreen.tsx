@@ -31,6 +31,29 @@ export default function WelcomeScreen() {
     checkAndAutoOpen();
   }, [localPath, setVaultPath, setGitHubConfig, setGithubSetupComplete, addRecentFolder, getRecentFolder]);
 
+  useEffect(() => {
+    const validateRecentFolders = async () => {
+      const validFolders = [];
+      for (const folder of recentFolders) {
+        try {
+          const absPath = await invoke<string>("make_absolute", { path: folder.path });
+          const normalizedPath = absPath.replace(/\\/g, "/");
+          const pathCheck = await invoke<string>("check_path", { path: normalizedPath });
+          if (pathCheck.includes("Exists") && pathCheck.includes("directory")) {
+            validFolders.push(folder);
+          }
+        } catch (e) {
+        }
+      }
+      if (validFolders.length !== recentFolders.length) {
+        setRecentFolders(validFolders);
+      }
+    };
+    if (recentFolders.length > 0) {
+      validateRecentFolders();
+    }
+  }, []);
+
   const handleReset = () => {
     setVaultPath(null);
     setGitHubConfig(null);
