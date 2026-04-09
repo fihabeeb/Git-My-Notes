@@ -21,6 +21,10 @@ A markdown note-taking app with GitHub sync, built with Tauri + React.
 
 ## Setup
 
+### AI
+- Model: MiniMax M2.5 Free
+- CLI Tool: Opencode
+
 ### Prerequisites
 
 - Node.js 18+
