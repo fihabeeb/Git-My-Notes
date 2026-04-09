@@ -24,5 +24,19 @@ dist-ssr
 *.sw?
 
 # Git cloned repos (excluded from version control)
-*-git_*/
+*-git*/
 *-git_store/
+
+# Tauri/Rust build artifacts
+src-tauri/target/
+*.exe
+*.dll
+*.so
+*.dylib
+*.rlib
+*.pdb
+*.pdb.zip
+*.exp
+*.lib
+*.obj
+*.o
