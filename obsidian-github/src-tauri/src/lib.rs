@@ -33,9 +33,6 @@ impl CloneResult {
     fn error(message: &str) -> Self {
         Self { success: false, message: message.to_string(), has_conflict: false }
     }
-    fn conflict(message: &str) -> Self {
-        Self { success: true, message: message.to_string(), has_conflict: true }
-    }
 }
 
 #[tauri::command]
@@ -133,7 +130,7 @@ async fn clone_repo(
 }
 
 #[tauri::command]
-async fn pull_repo(local_path: String, token: String, subfolder: Option<String>) -> Result<CloneResult, String> {
+async fn pull_repo(local_path: String, token: String, _subfolder: Option<String>) -> Result<CloneResult, String> {
     let local_path_normalized = normalize_path(&local_path);
     let git_dir = Path::new(&local_path_normalized).join(".git");
     if !git_dir.exists() {
@@ -206,7 +203,7 @@ fn check_for_conflicts(local_path: String) -> Result<Vec<ConflictFile>, String> 
     
     let mut index = repo.index().map_err(|e| e.to_string())?;
     let index_tree = index.write_tree().map_err(|e| e.to_string())?;
-    let index_tree = repo.find_tree(index_tree).map_err(|e| e.to_string())?;
+    let _index_tree = repo.find_tree(index_tree).map_err(|e| e.to_string())?;
     
     let diff = repo.diff_tree_to_index(Some(&head_tree), Some(&index), None).map_err(|e| e.to_string())?;
     
@@ -422,8 +419,8 @@ fn get_git_status(local_path: String) -> Result<GitStatus, String> {
 }
 
 #[tauri::command]
-fn check_repo_exists(localPath: String) -> Result<bool, String> {
-    let normalized = normalize_path(&localPath);
+fn check_repo_exists(local_path: String) -> Result<bool, String> {
+    let normalized = normalize_path(&local_path);
     let path = Path::new(&normalized);
     match Repository::open(path) {
         Ok(_) => Ok(true),
