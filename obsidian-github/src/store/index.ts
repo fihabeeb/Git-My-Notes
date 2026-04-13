@@ -51,6 +51,7 @@ interface AppState {
   recentFolders: RecentFolder[];
   settings: AppSettings;
   conflicts: ConflictFile[];
+  showSettings: boolean;
   
   setVaultPath: (path: string | null) => void;
   setFiles: (files: FileNode[]) => void;
@@ -65,6 +66,7 @@ interface AppState {
   getRecentFolder: (path: string) => RecentFolder | undefined;
   updateSettings: (settings: Partial<AppSettings>) => void;
   setConflicts: (conflicts: ConflictFile[]) => void;
+  setShowSettings: (show: boolean) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -87,6 +89,7 @@ export const useAppStore = create<AppState>()(
         commitMessage: "Update {filename}",
       },
       conflicts: [],
+      showSettings: false,
       
       setVaultPath: (path) => set({ vaultPath: path }),
       setFiles: (files) => {
@@ -119,6 +122,7 @@ export const useAppStore = create<AppState>()(
         set({ settings: { ...settings, ...newSettings } });
       },
       setConflicts: (conflicts) => set({ conflicts }),
+      setShowSettings: (show) => set({ showSettings: show }),
     }),
     {
       name: "obsidian-github-storage",

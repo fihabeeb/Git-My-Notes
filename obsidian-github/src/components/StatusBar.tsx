@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import CommitHistory from "./CommitHistory";
 
 export default function StatusBar() {
-  const { isGitHubConnected, gitHubConfig, syncStatus, isSyncing, setIsSyncing, setSyncStatus, vaultPath, settings, setConflicts } = useAppStore();
+  const { isGitHubConnected, gitHubConfig, syncStatus, isSyncing, setIsSyncing, setSyncStatus, vaultPath, settings, setConflicts, setShowSettings } = useAppStore();
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const checkConflicts = async () => {
@@ -100,6 +100,13 @@ export default function StatusBar() {
             {isSyncing ? "⟳ Syncing..." : "⟳ Sync"}
           </button>
         )}
+        <button
+          onClick={() => setShowSettings(true)}
+          className="hover:text-[#c9d1d9] transition-colors"
+          title="Settings"
+        >
+          ⚙
+        </button>
         <span>{syncStatus}</span>
       </div>
     </div>

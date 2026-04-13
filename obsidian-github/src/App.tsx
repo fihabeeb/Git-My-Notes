@@ -7,9 +7,14 @@ import StatusBar from "./components/StatusBar";
 import WelcomeScreen from "./components/WelcomeScreen";
 import GitHubSetup from "./components/GitHubSetup";
 import ConflictBanner from "./components/ConflictBanner";
+import Settings from "./components/Settings";
 
 function App() {
-  const { vaultPath, githubSetupComplete } = useAppStore();
+  const { vaultPath, githubSetupComplete, showSettings } = useAppStore();
+
+  if (showSettings) {
+    return <Settings />;
+  }
 
   if (!vaultPath) {
     return <WelcomeScreen />;
