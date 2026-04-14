@@ -1,7 +1,7 @@
 import { useAppStore } from "../store";
 
 export default function ConflictBanner() {
-  const { conflicts } = useAppStore();
+  const { conflicts, setShowConflictResolution } = useAppStore();
 
   if (conflicts.length === 0) return null;
 
@@ -13,7 +13,10 @@ export default function ConflictBanner() {
           {conflicts.length} conflict{conflicts.length > 1 ? "s" : ""} detected: {conflicts.map(c => c.path).join(", ")}
         </span>
       </div>
-      <button className="text-xs text-yellow-500 hover:text-yellow-400">
+      <button 
+        onClick={() => setShowConflictResolution(true)}
+        className="text-xs text-yellow-500 hover:text-yellow-400"
+      >
         Resolve →
       </button>
     </div>

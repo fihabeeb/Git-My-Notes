@@ -7,13 +7,23 @@ import StatusBar from "./components/StatusBar";
 import WelcomeScreen from "./components/WelcomeScreen";
 import GitHubSetup from "./components/GitHubSetup";
 import ConflictBanner from "./components/ConflictBanner";
+import ConflictResolution from "./components/ConflictResolution";
 import Settings from "./components/Settings";
+import SearchPalette from "./components/SearchPalette";
+import BranchManager from "./components/BranchManager";
+import TagBrowser from "./components/TagBrowser";
+import ExportDialog from "./components/ExportDialog";
+import KeyboardShortcuts from "./components/KeyboardShortcuts";
 
 function App() {
-  const { vaultPath, githubSetupComplete, showSettings } = useAppStore();
+  const { vaultPath, githubSetupComplete, showSettings, showConflictResolution } = useAppStore();
 
   if (showSettings) {
     return <Settings />;
+  }
+
+  if (showConflictResolution) {
+    return <ConflictResolution />;
   }
 
   if (!vaultPath) {
@@ -47,6 +57,11 @@ function App() {
         </PanelGroup>
       </div>
       <StatusBar />
+      <SearchPalette />
+      <BranchManager />
+      <TagBrowser />
+      <ExportDialog />
+      <KeyboardShortcuts />
     </div>
   );
 }

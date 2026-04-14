@@ -67,6 +67,34 @@ fn create_file(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn delete_file(path: String) -> Result<(), String> {
+    let normalized = normalize_path(&path);
+    let path_ref = Path::new(&normalized);
+    if path_ref.is_dir() {
+        fs::remove_dir_all(&normalized).map_err(|e| format!("Failed to delete folder: {}", e))
+    } else {
+        fs::remove_file(&normalized).map_err(|e| format!("Failed to delete file: {}", e))
+    }
+}
+
+#[tauri::command]
+fn rename_file(old_path: String, new_name: String) -> Result<String, String> {
+    let normalized_old = normalize_path(&old_path);
+    let old_path_ref = Path::new(&normalized_old);
+    let parent = old_path_ref.parent().ok_or("No parent directory")?;
+    let new_path = parent.join(&new_name);
+    let new_path_str = normalize_path(&new_path.to_string_lossy().to_string());
+    fs::rename(&normalized_old, &new_path_str).map_err(|e| format!("Failed to rename: {}", e))?;
+    Ok(new_path_str)
+}
+
+#[tauri::command]
+fn create_folder(path: String) -> Result<(), String> {
+    let normalized = normalize_path(&path);
+    fs::create_dir_all(&normalized).map_err(|e| format!("Failed to create folder: {}", e))
+}
+
+#[tauri::command]
 fn check_path(path: String) -> Result<String, String> {
     let normalized = normalize_path(&path);
     let path_ref = Path::new(&normalized);
@@ -224,6 +252,92 @@ fn check_for_conflicts(local_path: String) -> Result<Vec<ConflictFile>, String> 
 #[derive(Serialize, Deserialize)]
 pub struct ConflictFile {
     pub path: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ConflictContent {
+    pub path: String,
+    pub our_content: String,
+    pub their_content: String,
+}
+
+#[tauri::command]
+fn get_conflicted_file_content(local_path: String, file_path: String) -> Result<ConflictContent, String> {
+    let repo = Repository::open(&local_path).map_err(|e| e.to_string())?;
+    let mut index = repo.index().map_err(|e| e.to_string())?;
+    
+    let path = std::path::Path::new(&file_path);
+    let index_entry = index.get_path(path).ok_or("File not in index")?;
+    
+    let our_content = if let Some(ancestor) = index_entry.ancestor() {
+        let blob = repo.find_blob(ancestor).map_err(|e| e.to_string())?;
+        std::str::from_utf8(blob.content()).unwrap_or("").to_string()
+    } else {
+        String::new()
+    };
+    
+    let their_content = if let Some(other) = index_entry.other() {
+        let blob = repo.find_blob(other).map_err(|e| e.to_string())?;
+        std::str::from_utf8(blob.content()).unwrap_or("").to_string()
+    } else {
+        String::new()
+    };
+    
+    Ok(ConflictContent {
+        path: file_path,
+        our_content,
+        their_content,
+    })
+}
+
+#[tauri::command]
+fn resolve_conflict(local_path: String, file_path: String, resolution: String) -> Result<(), String> {
+    let repo = Repository::open(&local_path).map_err(|e| e.to_string())?;
+    let mut index = repo.index().map_err(|e| e.to_string())?;
+    
+    let path = std::path::Path::new(&file_path);
+    let entry_index = index.get_path(path).ok_or("File not in index")?;
+    
+    let content = match resolution.as_str() {
+        "ours" => {
+            if let Some(ancestor) = entry_index.ancestor() {
+                let blob = repo.find_blob(ancestor).map_err(|e| e.to_string())?;
+                std::str::from_utf8(blob.content()).unwrap_or("").to_string()
+            } else {
+                return Err("No 'ours' version available".to_string());
+            }
+        }
+        "theirs" => {
+            if let Some(other) = entry_index.other() {
+                let blob = repo.find_blob(other).map_err(|e| e.to_string())?;
+                std::str::from_utf8(blob.content()).unwrap_or("").to_string()
+            } else {
+                return Err("No 'theirs' version available".to_string());
+            }
+        }
+        "both" => {
+            let mut result = String::new();
+            if let Some(ancestor) = entry_index.ancestor() {
+                let blob = repo.find_blob(ancestor).map_err(|e| e.to_string())?;
+                result.push_str("<<<<<<< ours\n");
+                result.push_str(std::str::from_utf8(blob.content()).unwrap_or(""));
+                result.push_str("=======\n");
+            }
+            if let Some(other) = entry_index.other() {
+                let blob = repo.find_blob(other).map_err(|e| e.to_string())?;
+                result.push_str(std::str::from_utf8(blob.content()).unwrap_or(""));
+                result.push_str(">>>>>>> theirs\n");
+            }
+            result
+        }
+        _ => return Err("Invalid resolution option".to_string()),
+    };
+    
+    std::fs::write(path, &content).map_err(|e| e.to_string())?;
+    index.add_path(path).map_err(|e| e.to_string())?;
+    index.write().map_err(|e| e.to_string())?;
+    
+    Ok(())
 }
 
 #[tauri::command]
@@ -517,6 +631,218 @@ pub struct CommitInfo {
     pub time: i64,
 }
 
+#[tauri::command]
+fn get_current_branch(local_path: String) -> Result<String, String> {
+    let repo = Repository::open(&local_path).map_err(|e| e.to_string())?;
+    let branch = repo.head().map_err(|e| e.to_string())?;
+    branch.shorthand().map(String::from).ok_or_else(|| "Not on a branch".to_string())
+}
+
+#[tauri::command]
+fn get_all_branches(local_path: String) -> Result<Vec<String>, String> {
+    let repo = Repository::open(&local_path).map_err(|e| e.to_string())?;
+    let mut branches = Vec::new();
+    
+    for branch_result in repo.branches().map_err(|e| e.to_string())? {
+        if let Ok((branch, _)) = branch_result {
+            if let Some(name) = branch.shorthand() {
+                branches.push(name.to_string());
+            }
+        }
+    }
+    
+    Ok(branches)
+}
+
+#[tauri::command]
+fn switch_branch(local_path: String, branch_name: String, token: String) -> Result<CloneResult, String> {
+    let repo = Repository::open(&local_path).map_err(|e| e.to_string())?;
+    
+    let reference_name = format!("refs/heads/{}", branch_name);
+    
+    match repo.find_reference(&reference_name) {
+        Ok(branch_ref) => {
+            let commit = branch_ref.peel_to_commit().map_err(|e| e.to_string())?;
+            repo.checkout_tree(commit.as_object(), None).map_err(|e| e.to_string())?;
+            repo.set_head(&reference_name).map_err(|e| e.to_string())?;
+            
+            Ok(CloneResult {
+                success: true,
+                message: format!("Switched to branch: {}", branch_name),
+                has_conflict: false,
+            })
+        }
+        Err(_) => {
+            let token_clone = token.clone();
+            let mut remote = repo.find_remote("origin").map_err(|e| e.to_string())?;
+            
+            let mut callbacks = RemoteCallbacks::new();
+            callbacks.credentials(move |_url, _username_from_url, _cred_type| {
+                git2::Cred::userpass_plaintext("oauth2", &token_clone)
+            });
+            
+            let mut fetch_opts = git2::FetchOptions::new();
+            fetch_opts.remote_callbacks(callbacks);
+            
+            let refspec = format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name);
+            remote.fetch(&[&refspec], Some(&mut fetch_opts), None).map_err(|e| e.to_string())?;
+            
+            let reference_name = format!("refs/heads/{}", branch_name);
+            let branch_ref = repo.find_reference(&reference_name).map_err(|e| e.to_string())?;
+            let commit = branch_ref.peel_to_commit().map_err(|e| e.to_string())?;
+            repo.checkout_tree(commit.as_object(), None).map_err(|e| e.to_string())?;
+            repo.set_head(&reference_name).map_err(|e| e.to_string())?;
+            
+            Ok(CloneResult {
+                success: true,
+                message: format!("Switched to branch: {}", branch_name),
+                has_conflict: false,
+            })
+        }
+    }
+}
+
+#[tauri::command]
+fn get_all_tags(local_path: String) -> Result<Vec<String>, String> {
+    let repo = Repository::open(&local_path).map_err(|e| e.to_string())?;
+    let mut tags = Vec::new();
+    
+    for tag_result in repo.tag_names(None).map_err(|e| e.to_string())? {
+        if let Some(name) = tag_result {
+            tags.push(name.to_string());
+        }
+    }
+    
+    Ok(tags)
+}
+
+#[tauri::command]
+fn search_files_content(local_path: String, query: String) -> Result<Vec<SearchResult>, String> {
+    let normalized = normalize_path(&local_path);
+    let query_lower = query.to_lowercase();
+    let mut results = Vec::new();
+    
+    fn search_dir(dir: &Path, query: &str, results: &mut Vec<SearchResult>, normalized: &str) -> Result<(), String> {
+        let entries = fs::read_dir(dir).map_err(|e| e.to_string())?;
+        
+        for entry in entries {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            
+            if name.starts_with(".") {
+                continue;
+            }
+            
+            if path.is_dir() {
+                search_dir(&path, query, results, normalized)?;
+            } else if name.ends_with(".md") {
+                let full_path = path.to_string_lossy().to_string().replace("\\", "/");
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if content.to_lowercase().contains(query) {
+                        let relative_path = full_path.strip_prefix(normalized)
+                            .map(|p| p.trim_start_matches('/'))
+                            .unwrap_or(&full_path);
+                        
+                        let lines: Vec<&str> = content.lines()
+                            .enumerate()
+                            .filter(|(_, line)| line.to_lowercase().contains(query))
+                            .map(|(i, _)| i + 1)
+                            .take(3)
+                            .collect();
+                        
+                        results.push(SearchResult {
+                            path: full_path,
+                            name: name.replace(".md", ""),
+                            matches: lines.len(),
+                            line_numbers: lines,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    
+    let base_path = Path::new(&normalized);
+    search_dir(base_path, &query_lower, &mut results, &normalized)?;
+    
+    results.sort_by(|a, b| b.matches.cmp(&a.matches));
+    Ok(results)
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SearchResult {
+    pub path: String,
+    pub name: String,
+    pub matches: usize,
+    pub line_numbers: Vec<usize>,
+}
+
+#[tauri::command]
+fn convert_markdown_to_html(content: String) -> Result<String, String> {
+    let mut html = content.clone();
+    
+    html = regex::Regex::new(r"(?m)^###### (.+)$")
+        .map(|re| re.replace_all(&html, "<h6>$1</h6>").to_string())
+        .unwrap_or(html);
+    html = regex::Regex::new(r"(?m)^##### (.+)$")
+        .map(|re| re.replace_all(&html, "<h5>$1</h5>").to_string())
+        .unwrap_or(html);
+    html = regex::Regex::new(r"(?m)^#### (.+)$")
+        .map(|re| re.replace_all(&html, "<h4>$1</h4>").to_string())
+        .unwrap_or(html);
+    html = regex::Regex::new(r"(?m)^### (.+)$")
+        .map(|re| re.replace_all(&html, "<h3>$1</h3>").to_string())
+        .unwrap_or(html);
+    html = regex::Regex::new(r"(?m)^## (.+)$")
+        .map(|re| re.replace_all(&html, "<h2>$1</h2>").to_string())
+        .unwrap_or(html);
+    html = regex::Regex::new(r"(?m)^# (.+)$")
+        .map(|re| re.replace_all(&html, "<h1>$1</h1>").to_string())
+        .unwrap_or(html);
+    
+    html = regex::Regex::new(r"\*\*\*(.+?)\*\*\*")
+        .map(|re| re.replace_all(&html, "<strong><em>$1</em></strong>").to_string())
+        .unwrap_or(html);
+    html = regex::Regex::new(r"\*\*(.+?)\*\*")
+        .map(|re| re.replace_all(&html, "<strong>$1</strong>").to_string())
+        .unwrap_or(html);
+    html = regex::Regex::new(r"\*(.+?)\*")
+        .map(|re| re.replace_all(&html, "<em>$1</em>").to_string())
+        .unwrap_or(html);
+    
+    html = regex::Regex::new(r"(?m)^> (.+)$")
+        .map(|re| re.replace_all(&html, "<blockquote>$1</blockquote>").to_string())
+        .unwrap_or(html);
+    
+    html = regex::Regex::new(r"(?m)^- (.+)$")
+        .map(|re| re.replace_all(&html, "<li>$1</li>").to_string())
+        .unwrap_or(html);
+    
+    html = regex::Regex::new(r"(?m)^(\d+)\. (.+)$")
+        .map(|re| re.replace_all(&html, "<li>$2</li>").to_string())
+        .unwrap_or(html);
+    
+    html = regex::Regex::new(r"\[(.+?)\]\((.+?)\)")
+        .map(|re| re.replace_all(&html, "<a href=\"$2\">$1</a>").to_string())
+        .unwrap_or(html);
+    
+    html = regex::Regex::new(r"(?s)```(\w*)\n(.*?)```")
+        .map(|re| re.replace_all(&html, "<pre><code>$2</code></pre>").to_string())
+        .unwrap_or(html);
+    
+    html = regex::Regex::new(r"`([^`]+)`")
+        .map(|re| re.replace_all(&html, "<code>$1</code>").to_string())
+        .unwrap_or(html);
+    
+    html = regex::Regex::new(r"(?m)^(.+)$")
+        .map(|re| re.replace_all(&html, "$1<br/>").to_string())
+        .unwrap_or(html);
+    
+    Ok(html)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -531,6 +857,9 @@ pub fn run() {
             read_file,
             write_file,
             create_file,
+            delete_file,
+            rename_file,
+            create_folder,
             check_path,
             get_current_dir,
             make_absolute,
@@ -538,6 +867,14 @@ pub fn run() {
             commit_changes,
             get_commit_history,
             check_for_conflicts,
+            get_conflicted_file_content,
+            resolve_conflict,
+            get_current_branch,
+            get_all_branches,
+            switch_branch,
+            get_all_tags,
+            search_files_content,
+            convert_markdown_to_html,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

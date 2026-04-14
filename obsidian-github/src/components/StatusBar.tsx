@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import CommitHistory from "./CommitHistory";
 
 export default function StatusBar() {
-  const { isGitHubConnected, gitHubConfig, syncStatus, isSyncing, setIsSyncing, setSyncStatus, vaultPath, settings, setConflicts, setShowSettings } = useAppStore();
+  const { isGitHubConnected, gitHubConfig, syncStatus, isSyncing, setIsSyncing, setSyncStatus, vaultPath, settings, setConflicts, setShowSettings, setShowConflictResolution, currentBranch, setShowBranchManager } = useAppStore();
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const checkConflicts = async () => {
@@ -12,6 +12,9 @@ export default function StatusBar() {
     try {
       const conflicts = await invoke<{ path: string }[]>("check_for_conflicts", { localPath: vaultPath });
       setConflicts(conflicts);
+      if (conflicts.length > 0) {
+        setShowConflictResolution(true);
+      }
     } catch (e) {
       console.error("Failed to check conflicts:", e);
     }
@@ -86,6 +89,15 @@ export default function StatusBar() {
           <span className={`w-2 h-2 rounded-full ${isGitHubConnected ? "bg-green-500" : "bg-gray-500"}`} />
           {isGitHubConnected ? gitHubConfig?.repo : "Not connected"}
         </span>
+        {isGitHubConnected && currentBranch && (
+          <button 
+            onClick={() => setShowBranchManager(true)}
+            className="hover:text-[#c9d1d9] transition-colors flex items-center gap-1"
+          >
+            <span className="text-[#8b949e]">⎇</span>
+            <span>{currentBranch}</span>
+          </button>
+        )}
       </div>
       <div className="flex items-center gap-4">
         {isGitHubConnected && (

@@ -52,6 +52,13 @@ interface AppState {
   settings: AppSettings;
   conflicts: ConflictFile[];
   showSettings: boolean;
+  showConflictResolution: boolean;
+  showSearch: boolean;
+  tags: string[];
+  currentBranch: string | null;
+  showBranchManager: boolean;
+  showTagBrowser: boolean;
+  showExport: boolean;
   
   setVaultPath: (path: string | null) => void;
   setFiles: (files: FileNode[]) => void;
@@ -67,6 +74,13 @@ interface AppState {
   updateSettings: (settings: Partial<AppSettings>) => void;
   setConflicts: (conflicts: ConflictFile[]) => void;
   setShowSettings: (show: boolean) => void;
+  setShowConflictResolution: (show: boolean) => void;
+  setShowSearch: (show: boolean) => void;
+  setTags: (tags: string[]) => void;
+  setCurrentBranch: (branch: string | null) => void;
+  setShowBranchManager: (show: boolean) => void;
+  setShowTagBrowser: (show: boolean) => void;
+  setShowExport: (show: boolean) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -90,6 +104,13 @@ export const useAppStore = create<AppState>()(
       },
       conflicts: [],
       showSettings: false,
+      showConflictResolution: false,
+      showSearch: false,
+      tags: [],
+      currentBranch: null,
+      showBranchManager: false,
+      showTagBrowser: false,
+      showExport: false,
       
       setVaultPath: (path) => set({ vaultPath: path }),
       setFiles: (files) => {
@@ -123,6 +144,13 @@ export const useAppStore = create<AppState>()(
       },
       setConflicts: (conflicts) => set({ conflicts }),
       setShowSettings: (show) => set({ showSettings: show }),
+      setShowConflictResolution: (show) => set({ showConflictResolution: show }),
+      setShowSearch: (show) => set({ showSearch: show }),
+      setTags: (tags) => set({ tags }),
+      setCurrentBranch: (branch) => set({ currentBranch: branch }),
+      setShowBranchManager: (show) => set({ showBranchManager: show }),
+      setShowTagBrowser: (show) => set({ showTagBrowser: show }),
+      setShowExport: (show) => set({ showExport: show }),
     }),
     {
       name: "obsidian-github-storage",

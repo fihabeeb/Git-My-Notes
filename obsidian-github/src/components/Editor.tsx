@@ -10,6 +10,88 @@ import { markdownPreview, markdownPreviewTheme } from "../lib/markdownPreview";
 
 type SaveStatus = "saved" | "saving" | "unsaved";
 
+interface ToolbarButton {
+  icon: string;
+  title: string;
+  action: (view: EditorView) => void;
+}
+
+const toolbarButtons: ToolbarButton[] = [
+  {
+    icon: "B",
+    title: "Bold (Ctrl+B)",
+    action: (view) => wrapSelection(view, "**", "**"),
+  },
+  {
+    icon: "I",
+    title: "Italic (Ctrl+I)",
+    action: (view) => wrapSelection(view, "*", "*"),
+  },
+  {
+    icon: "H1",
+    title: "Heading 1",
+    action: (view) => insertAtLineStart(view, "# "),
+  },
+  {
+    icon: "H2",
+    title: "Heading 2",
+    action: (view) => insertAtLineStart(view, "## "),
+  },
+  {
+    icon: "H3",
+    title: "Heading 3",
+    action: (view) => insertAtLineStart(view, "### "),
+  },
+  {
+    icon: "🔗",
+    title: "Insert Link",
+    action: (view) => wrapSelection(view, "[", "](url)"),
+  },
+  {
+    icon: "📋",
+    title: "Code Block",
+    action: (view) => wrapSelection(view, "```\n", "\n```"),
+  },
+  {
+    icon: "•",
+    title: "Bullet List",
+    action: (view) => insertAtLineStart(view, "- "),
+  },
+  {
+    icon: "1.",
+    title: "Numbered List",
+    action: (view) => insertAtLineStart(view, "1. "),
+  },
+  {
+    icon: "``",
+    title: "Inline Code",
+    action: (view) => wrapSelection(view, "`", "`"),
+  },
+  {
+    icon: ">",
+    title: "Quote",
+    action: (view) => insertAtLineStart(view, "> "),
+  },
+];
+
+function wrapSelection(view: EditorView, before: string, after: string) {
+  const { from, to } = view.state.selection.main;
+  const selectedText = view.state.sliceDoc(from, to);
+  view.dispatch({
+    changes: { from, to, insert: before + selectedText + after },
+    selection: { anchor: from + before.length, head: to + before.length },
+  });
+  view.focus();
+}
+
+function insertAtLineStart(view: EditorView, prefix: string) {
+  const line = view.state.doc.lineAt(view.state.selection.main.head);
+  view.dispatch({
+    changes: { from: line.from, to: line.from, insert: prefix },
+  });
+  view.focus();
+}
+
 export default function Editor() {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -17,7 +99,7 @@ export default function Editor() {
   const lastSavedContentRef = useRef<string>("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   
-  const { activeFile, editorContent, setEditorContent, vaultPath, gitHubConfig, settings } = useAppStore();
+  const { activeFile, editorContent, setEditorContent, vaultPath, gitHubConfig, settings, setShowExport } = useAppStore();
 
   const saveFile = useCallback(async (content?: string) => {
     if (!activeFile || !vaultPath) return;
@@ -176,26 +258,53 @@ export default function Editor() {
     }
   };
 
+  const handleToolbarClick = (button: ToolbarButton) => {
+    if (viewRef.current) {
+      button.action(viewRef.current);
+    }
+  };
+
   return (
     <div className="h-full obsidian-editor flex flex-col">
       {activeFile && (
-        <div className="px-4 py-2 bg-[#161b22] border-b border-[#30363d] flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-[#c9d1d9] font-medium">
-              {activeFile.split("/").pop()?.replace(".md", "")}
-            </span>
-            <span className={`text-xs ${getStatusColor()}`}>
-              {getStatusText()}
-            </span>
+        <>
+          <div className="px-4 py-2 bg-[#161b22] border-b border-[#30363d] flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-[#c9d1d9] font-medium">
+                {activeFile.split("/").pop()?.replace(".md", "")}
+              </span>
+              <span className={`text-xs ${getStatusColor()}`}>
+                {getStatusText()}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              {toolbarButtons.map((btn, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleToolbarClick(btn)}
+                  title={btn.title}
+                  className="px-2 py-1 text-xs text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#30363d] rounded transition-colors font-mono"
+                >
+                  {btn.icon}
+                </button>
+              ))}
+              <button
+                onClick={() => setShowExport(true)}
+                title="Export"
+                className="px-2 py-1 text-xs text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#30363d] rounded transition-colors"
+              >
+                ↓
+              </button>
+              <button
+                onClick={() => saveFile()}
+                disabled={saveStatus === "saving"}
+                className="ml-2 px-3 py-1 text-xs bg-[#238636] hover:bg-[#2ea043] text-white rounded transition-colors disabled:opacity-50"
+              >
+                Save
+              </button>
+            </div>
           </div>
-          <button
-            onClick={() => saveFile()}
-            disabled={saveStatus === "saving"}
-            className="px-3 py-1 text-xs bg-[#238636] hover:bg-[#2ea043] text-white rounded transition-colors disabled:opacity-50"
-          >
-            Save
-          </button>
-        </div>
+        </>
       )}
       <div ref={editorRef} className="flex-1 overflow-hidden" />
     </div>
